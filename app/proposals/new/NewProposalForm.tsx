@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { format } from 'date-fns'
+import { ko } from 'date-fns/locale'
 
 interface Place {
   name: string
@@ -41,6 +43,7 @@ const emptyCourse = (): Course => ({ title: '', description: '', places: [emptyP
 export default function NewProposalForm() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const [form, setForm] = useState({ title: '', proposedDate: '', proposedTime: '', message: '' })
   const [courses, setCourses] = useState<Course[]>([emptyCourse()])
 
@@ -119,8 +122,8 @@ export default function NewProposalForm() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault()
     setLoading(true)
     try {
       // 1. 신청서 생성
@@ -159,8 +162,94 @@ export default function NewProposalForm() {
     }
   }
 
+  if (showPreview) {
+    const validCourses = courses.filter((c) => c.title.trim())
+    return (
+      <div className="space-y-4">
+        {/* 미리보기 헤더 */}
+        <div className="rounded-xl px-4 py-2.5 text-xs font-medium text-center" style={{ background: '#f5ede6', color: '#b5614e' }}>
+          미리보기 — 실제 신청 전 확인해보세요
+        </div>
+
+        {/* 신청 내용 */}
+        <div className="card p-7">
+          <div className="flex items-start justify-between gap-4 mb-5">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight" style={{ color: '#3d2c28' }}>{form.title || '(제목 없음)'}</h1>
+              {form.proposedDate && (
+                <p className="text-sm mt-1" style={{ color: '#9b7b72' }}>
+                  {format(new Date(form.proposedDate), 'yyyy년 MM월 dd일 (EEEE)', { locale: ko })}
+                  {form.proposedTime && ` · ${form.proposedTime}`}
+                </p>
+              )}
+            </div>
+            <span className="text-xs font-medium px-3 py-1.5 rounded-full shrink-0" style={{ color: '#b5614e', background: '#b5614e18' }}>
+              답장 대기 중
+            </span>
+          </div>
+          {form.message && (
+            <div className="rounded-xl p-4" style={{ background: '#f9f4f0' }}>
+              <p className="text-sm italic leading-relaxed" style={{ color: '#7a5548' }}>"{form.message}"</p>
+            </div>
+          )}
+        </div>
+
+        {/* 코스 목록 */}
+        {validCourses.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold px-1" style={{ color: '#9b7b72' }}>코스 옵션 {validCourses.length}개</h2>
+            {validCourses.map((course, idx) => (
+              <div key={idx} className="card p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#f5ede6', color: '#b5614e' }}>
+                    {idx + 1}
+                  </div>
+                  <h3 className="font-medium text-sm" style={{ color: '#3d2c28' }}>{course.title}</h3>
+                </div>
+                {course.description && (
+                  <p className="text-sm mb-3 ml-10 leading-relaxed" style={{ color: '#7a5548' }}>{course.description}</p>
+                )}
+                {course.places.filter((p) => p.name.trim()).length > 0 && (
+                  <div className="ml-10 space-y-3">
+                    {course.places.filter((p) => p.name.trim()).map((place, i) => (
+                      <div key={i}>
+                        {place.imagePreview && place.imagePreview !== 'loading' && (
+                          <div className="rounded-xl mb-1.5 h-36" style={{ backgroundImage: `url(${place.imagePreview})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                        )}
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm shrink-0" style={{ color: '#c98d82' }}>·</span>
+                          <div>
+                            <div className="text-sm font-medium" style={{ color: '#3d2c28' }}>{place.name}</div>
+                            {place.description && <div className="text-xs mt-0.5" style={{ color: '#9b7b72' }}>{place.description}</div>}
+                            {place.address && <div className="text-xs mt-0.5" style={{ color: '#c4a89f' }}>{place.address}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={() => setShowPreview(false)} className="btn-secondary flex-1">수정하기</button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={(e) => handleSubmit(e as any)}
+            className="btn-primary flex-1"
+          >
+            {loading ? '전송 중...' : '신청하기'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true) }} className="space-y-4">
       {/* 기본 정보 */}
       <div className="card p-6 space-y-4">
         <div>
@@ -367,9 +456,7 @@ export default function NewProposalForm() {
 
       <div className="flex gap-3 pt-1">
         <button type="button" onClick={() => router.back()} className="btn-secondary flex-1">취소</button>
-        <button type="submit" disabled={loading} className="btn-primary flex-1">
-          {loading ? '전송 중...' : '신청하기'}
-        </button>
+        <button type="submit" className="btn-primary flex-1">미리보기</button>
       </div>
     </form>
   )
