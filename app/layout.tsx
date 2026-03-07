@@ -19,7 +19,7 @@ export default async function RootLayout({
     <html lang="ko">
       <body className="antialiased min-h-screen">
         {session && <Header session={session} />}
-        <main className={session ? 'pt-16' : ''}>
+        <main className={session ? 'pt-16 pb-16 sm:pb-0' : ''}>
           {children}
         </main>
       </body>
