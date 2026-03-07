@@ -1,26 +1,127 @@
 @import "tailwindcss";
 
+/* 웜톤 팔레트
+  bg:       #f9f6f2  따뜻한 크림
+  surface:  #fffdf9  카드 배경
+  primary:  #b5614e  테라코타 로즈
+  muted:    #c98d82  뮤트 로즈
+  border:   #e8d8d0  따뜻한 베이지
+  text:     #3d2c28  웜 다크 브라운
+  subtext:  #9b7b72  웜 뮤트
+*/
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --bg: #f9f6f2;
+  --surface: #fffdf9;
+  --primary: #b5614e;
+  --primary-hover: #9e4f3d;
+  --muted: #c98d82;
+  --border: #e8d8d0;
+  --text: #3d2c28;
+  --subtext: #9b7b72;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: linear-gradient(160deg, #f9f6f2 0%, #f5ede6 50%, #faf7f3 100%);
+  min-height: 100vh;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+
+.card {
+  background: rgba(255, 253, 249, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  box-shadow: 0 2px 20px rgba(100, 50, 40, 0.07);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #b5614e, #9e4f3d);
+  color: #fffdf9;
+  padding: 0.7rem 1.8rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
+  transition: all 0.2s;
+  box-shadow: 0 3px 12px rgba(181, 97, 78, 0.28);
+  display: inline-block;
+  cursor: pointer;
+  border: none;
+  text-align: center;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(181, 97, 78, 0.36);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--primary);
+  border: 1.5px solid var(--border);
+  padding: 0.7rem 1.8rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  display: inline-block;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn-secondary:hover {
+  background: #f5ede6;
+  border-color: var(--muted);
+  transform: translateY(-1px);
+}
+
+.input-romantic {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 0.875rem;
+  padding: 0.7rem 1rem;
+  background: rgba(255, 253, 249, 0.95);
+  transition: all 0.2s;
+  outline: none;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.input-romantic:focus {
+  border-color: var(--muted);
+  box-shadow: 0 0 0 3px rgba(181, 97, 78, 0.08);
+}
+
+.input-romantic::placeholder {
+  color: #c4a89f;
+}
+
+.proposal-row:hover {
+  background: #f5ede6;
 }
