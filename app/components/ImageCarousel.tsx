@@ -5,11 +5,12 @@ import { useRef, useState } from 'react'
 interface ImageCarouselProps {
   images: string[]
   href?: string
+  title?: string
 }
 
 const PEEK = 68 // 메인 이미지 너비(%), 나머지는 옆 이미지 peek
 
-export default function ImageCarousel({ images, href }: ImageCarouselProps) {
+export default function ImageCarousel({ images, href, title }: ImageCarouselProps) {
   const [current, setCurrent] = useState(0)
   const trackRef = useRef<HTMLDivElement>(null)
 
@@ -73,6 +74,7 @@ export default function ImageCarousel({ images, href }: ImageCarouselProps) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
+              title={title}
               style={{ ...imgStyle(src), display: 'block', overflow: 'hidden' }}
             />
           ) : (

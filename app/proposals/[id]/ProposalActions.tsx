@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 interface Course {
   _id: string
@@ -173,8 +174,23 @@ export default function ProposalActions({ proposal, role, courses }: ProposalAct
     )
   }
 
-  // 남자친구 - 대기 중 / 수락 / 거절
-  if (role === 'boyfriend' && ['pending', 'accepted', 'declined'].includes(proposal.status)) {
+  // 남자친구 - 대기 중 (수정 가능)
+  if (role === 'boyfriend' && proposal.status === 'pending') {
+    return (
+      <div className="space-y-3">
+        <Link
+          href={`/proposals/${proposal._id}/edit`}
+          className="btn-secondary block text-center text-sm"
+        >
+          수정하기
+        </Link>
+        {cancelButton}
+      </div>
+    )
+  }
+
+  // 남자친구 - 수락 / 거절
+  if (role === 'boyfriend' && ['accepted', 'declined'].includes(proposal.status)) {
     return <div>{cancelButton}</div>
   }
 

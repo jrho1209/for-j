@@ -17,6 +17,20 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   return NextResponse.json(courses)
 }
 
+// 해당 proposal의 모든 코스 삭제
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+
+  const { id } = await params
+  const courses = await readClient.fetch(
+    `*[_type == "dateCourse" && proposal._ref == $id]{ _id }`,
+    { id }
+  )
+  await Promise.all(courses.map((c: { _id: string }) => client.delete(c._id)))
+  return NextResponse.json({ ok: true })
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })

@@ -36,6 +36,8 @@ export const dateCourse = defineType({
             defineField({ name: 'address', title: '주소', type: 'string' }),
             defineField({ name: 'url', title: '네이버 플레이스 URL', type: 'string' }),
             defineField({ name: 'emoji', title: '이모지', type: 'string' }),
+            defineField({ name: 'lat', title: '위도', type: 'number' }),
+            defineField({ name: 'lng', title: '경도', type: 'number' }),
             defineField({ name: 'image', title: '이미지', type: 'image' }),
             defineField({ name: 'images', title: '이미지 목록', type: 'array', of: [{ type: 'image' }] }),
           ],

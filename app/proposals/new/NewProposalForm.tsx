@@ -11,6 +11,8 @@ interface Place {
   description: string
   address: string
   url?: string
+  lat?: number
+  lng?: number
   imageAssetId?: string    // 하위 호환 유지
   imageAssetIds?: string[] // 여러 이미지
   imagePreview?: string
@@ -105,6 +107,8 @@ export default function NewProposalForm() {
         imagePreview: data.imageUrl || updated2[ci].places[pi].imagePreview,
         imageAssetIds: (data.assetIds && data.assetIds.length > 0) ? data.assetIds : updated2[ci].places[pi].imageAssetIds,
         imagePreviews: (data.imageUrls && data.imageUrls.length > 0) ? data.imageUrls : updated2[ci].places[pi].imagePreviews,
+        lat: data.lat ?? updated2[ci].places[pi].lat,
+        lng: data.lng ?? updated2[ci].places[pi].lng,
       }
       setCourses(updated2)
     } else {
@@ -161,6 +165,8 @@ export default function NewProposalForm() {
                   ...(imageAssetIds && imageAssetIds.length > 0
                     ? { images: imageAssetIds.map(id => ({ _type: 'image', asset: { _type: 'reference', _ref: id } })) }
                     : {}),
+                  lat: p.lat ?? undefined,
+                  lng: p.lng ?? undefined,
                 })),
               order: i,
             }),

@@ -11,7 +11,23 @@ function parseMeta(html: string, property: string): string {
   return value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
 }
 
-function extractCdnImages(html: string, limit = 3): string[] {
+function parseApolloState(html: string): Record<string, any> | null {
+  const apolloStart = html.indexOf('window.__APOLLO_STATE__')
+  if (apolloStart < 0) return null
+  const braceStart = html.indexOf('{', apolloStart)
+  if (braceStart < 0) return null
+  let depth = 0, braceEnd = braceStart
+  for (let i = braceStart; i < html.length; i++) {
+    if (html[i] === '{') depth++
+    else if (html[i] === '}') {
+      depth--
+      if (depth === 0) { braceEnd = i + 1; break }
+    }
+  }
+  try { return JSON.parse(html.slice(braceStart, braceEnd)) } catch { return null }
+}
+
+function extractCdnImages(html: string, apolloData: Record<string, any> | null, limit = 3): string[] {
   const urls: string[] = []
   const seen = new Set<string>()
 
@@ -19,41 +35,24 @@ function extractCdnImages(html: string, limit = 3): string[] {
     if (urls.length >= limit) return
     if (!/\/20\d{6}/.test(url)) return
     const clean = url.split('?')[0]
-    if (!seen.has(clean)) {
-      seen.add(clean)
-      urls.push(clean)
-    }
+    if (!seen.has(clean)) { seen.add(clean); urls.push(clean) }
   }
 
-  // __APOLLO_STATE__ JSON 파싱 (JSON.parse가 \u002F → / 자동 변환)
-  const apolloStart = html.indexOf('window.__APOLLO_STATE__')
-  if (apolloStart >= 0) {
-    const braceStart = html.indexOf('{', apolloStart)
-    let depth = 0, braceEnd = braceStart
-    for (let i = braceStart; i < html.length; i++) {
-      if (html[i] === '{') depth++
-      else if (html[i] === '}') {
-        depth--
-        if (depth === 0) { braceEnd = i + 1; break }
+  if (apolloData) {
+    const collect = (obj: unknown) => {
+      if (urls.length >= limit) return
+      if (typeof obj === 'string') {
+        if (obj.includes('ldb-phinf.pstatic.net') && /\/20\d{6}/.test(obj)) addUrl(obj)
+      } else if (Array.isArray(obj)) {
+        for (const item of obj) collect(item)
+      } else if (obj && typeof obj === 'object') {
+        for (const val of Object.values(obj as Record<string, unknown>)) collect(val)
       }
     }
-    try {
-      const data = JSON.parse(html.slice(braceStart, braceEnd))
-      const collect = (obj: unknown) => {
-        if (urls.length >= limit) return
-        if (typeof obj === 'string') {
-          if (obj.includes('ldb-phinf.pstatic.net') && /\/20\d{6}/.test(obj)) addUrl(obj)
-        } else if (Array.isArray(obj)) {
-          for (const item of obj) collect(item)
-        } else if (obj && typeof obj === 'object') {
-          for (const val of Object.values(obj as Record<string, unknown>)) collect(val)
-        }
-      }
-      collect(data)
-    } catch { /* JSON 파싱 실패 시 무시 */ }
+    collect(apolloData)
   }
 
-  // 폴백: HTML 내 URL 인코딩된 이미지 (search.pstatic.net 래퍼 src= 파라미터)
+  // 폴백: HTML 내 URL 인코딩된 이미지
   if (urls.length < limit) {
     const encodedRe = /src=https?(?:%3A|:)(?:%2F|\/){2}(ldb-phinf\.pstatic\.net(?:%2F|\/)[^"&\s<>]*)/gi
     let m: RegExpExecArray | null
@@ -67,6 +66,19 @@ function extractCdnImages(html: string, limit = 3): string[] {
   }
 
   return urls
+}
+
+function extractCoords(apolloData: Record<string, any>): { x: string; y: string } | null {
+  for (const val of Object.values(apolloData)) {
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      const { x, y } = val as any
+      if (typeof x === 'string' && typeof y === 'string' &&
+          /^\d+\.\d+$/.test(x) && /^\d+\.\d+$/.test(y)) {
+        return { x, y }
+      }
+    }
+  }
+  return null
 }
 
 async function uploadImageToSanity(imageUrl: string, index: number): Promise<{ assetId: string; url: string } | null> {
@@ -147,8 +159,10 @@ export async function POST(req: NextRequest) {
     const address = (!isReviewDesc && parts.length > 1) ? parts.slice(1).join(' ').trim() : ''
     const category = (!isReviewDesc && parts.length > 1) ? parts[0].trim() : ''
 
-    // 4. CDN 이미지 최대 3개 추출 (HTML에서 직접 ldb-phinf URL 파싱)
-    const cdnImages = extractCdnImages(html, 3)
+    // 4. Apollo state 파싱 (이미지 + 좌표 동시 추출)
+    const apolloData = parseApolloState(html)
+    const cdnImages = extractCdnImages(html, apolloData, 3)
+    const coords = apolloData ? extractCoords(apolloData) : null
 
     // CDN 이미지가 있으면 우선 사용, 없으면 og:image 폴백
     const allImageUrls: string[] = cdnImages.length > 0
@@ -177,6 +191,8 @@ export async function POST(req: NextRequest) {
       assetId,
       imageUrls,
       assetIds,
+      // Naver 좌표 (x=경도, y=위도)
+      ...(coords ? { lng: parseFloat(coords.x), lat: parseFloat(coords.y) } : {}),
     })
   } catch {
     return NextResponse.json({ error: '정보를 가져오지 못했어요.' }, { status: 500 })

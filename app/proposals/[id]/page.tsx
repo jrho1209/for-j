@@ -6,6 +6,7 @@ import { ko } from 'date-fns/locale'
 import ProposalActions from './ProposalActions'
 import Link from 'next/link'
 import ImageCarousel from '@/app/components/ImageCarousel'
+import CourseMap from '@/app/components/CourseMap'
 
 export default async function ProposalDetailPage({
   params,
@@ -28,7 +29,7 @@ export default async function ProposalDetailPage({
     readClient.fetch(
       `*[_type == "dateCourse" && proposal._ref == $id] | order(order asc) {
         _id, title, description, order,
-        places[]{ name, description, address, url, emoji, image{ asset->{ url } }, images[]{ asset->{ url } } }
+        places[]{ name, description, address, url, emoji, lat, lng, image{ asset->{ url } }, images[]{ asset->{ url } } }
       }`,
       { id }
     ),
@@ -91,6 +92,11 @@ export default async function ProposalDetailPage({
           />
         </div>
 
+        {/* 코스 지도 */}
+        {courses.length > 0 && (
+          <CourseMap courses={courses} selectedCourseId={proposal.selectedCourseId} />
+        )}
+
         {/* 코스 목록 */}
         {courses.length > 0 && (
           <div className="space-y-3">
@@ -133,7 +139,7 @@ export default async function ProposalDetailPage({
                               : place.image?.asset?.url
                                 ? [place.image.asset.url]
                                 : []
-                          return <ImageCarousel images={imageSrcs} href={place.url} />
+                          return <ImageCarousel images={imageSrcs} href={place.url} title={place.name} />
                         })()}
                         <div className="flex items-start gap-2">
                           <span className="text-sm shrink-0" style={{ color: '#c98d82' }}>·</span>
