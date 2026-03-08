@@ -68,14 +68,69 @@ function extractCdnImages(html: string, apolloData: Record<string, any> | null, 
   return urls
 }
 
+function isCoordValue(v: unknown): v is string | number {
+  if (typeof v === 'number' && isFinite(v)) return true
+  if (typeof v === 'string' && /^\d+(\.\d+)?$/.test(v.trim())) return true
+  return false
+}
+
+function isKoreanLng(v: number) { return v >= 124 && v <= 132 }
+function isKoreanLat(v: number) { return v >= 33 && v <= 43 }
+
 function extractCoords(apolloData: Record<string, any>): { x: string; y: string } | null {
-  for (const val of Object.values(apolloData)) {
-    if (val && typeof val === 'object' && !Array.isArray(val)) {
-      const { x, y } = val as any
-      if (typeof x === 'string' && typeof y === 'string' &&
-          /^\d+\.\d+$/.test(x) && /^\d+\.\d+$/.test(y)) {
-        return { x, y }
+  let result: { x: string; y: string } | null = null
+
+  const search = (obj: unknown): boolean => {
+    if (result) return true
+    if (!obj || typeof obj !== 'object') return false
+
+    if (!Array.isArray(obj)) {
+      const rec = obj as Record<string, unknown>
+      const { x, y } = rec
+      if (isCoordValue(x) && isCoordValue(y)) {
+        const nx = typeof x === 'number' ? x : parseFloat(x)
+        const ny = typeof y === 'number' ? y : parseFloat(y)
+        if (isKoreanLng(nx) && isKoreanLat(ny)) {
+          result = { x: String(nx), y: String(ny) }
+          return true
+        }
       }
+    }
+
+    const values = Array.isArray(obj) ? obj : Object.values(obj)
+    for (const val of values) {
+      if (val && typeof val === 'object') {
+        if (search(val)) return true
+      }
+    }
+    return false
+  }
+
+  search(apolloData)
+  return result
+}
+
+function extractCoordsFromHtml(html: string): { x: string; y: string } | null {
+  // "longitude":127.xxx,"latitude":37.xxx 또는 "lng":127.xxx,"lat":37.xxx 패턴
+  const patterns = [
+    /["'](?:longitude|lng)["']\s*:\s*(\d+\.?\d*)\s*,\s*["'](?:latitude|lat)["']\s*:\s*(\d+\.?\d*)/,
+    /["'](?:latitude|lat)["']\s*:\s*(\d+\.?\d*)\s*,\s*["'](?:longitude|lng)["']\s*:\s*(\d+\.?\d*)/,
+    /["']x["']\s*:\s*["']?(\d+\.\d+)["']?\s*,\s*["']y["']\s*:\s*["']?(\d+\.\d+)["']?/,
+    /["']y["']\s*:\s*["']?(\d+\.\d+)["']?\s*,\s*["']x["']\s*:\s*["']?(\d+\.\d+)["']?/,
+  ]
+  for (const pattern of patterns) {
+    const m = html.match(pattern)
+    if (m) {
+      const v1 = parseFloat(m[1]), v2 = parseFloat(m[2])
+      // 첫 번째 패턴: lng, lat 순서 / 두 번째 패턴: lat, lng 순서
+      if (pattern.source.startsWith('["\'](') || pattern.source.includes('longitude')) {
+        // lng first
+        if (isKoreanLng(v1) && isKoreanLat(v2)) return { x: String(v1), y: String(v2) }
+      }
+      // lat first
+      if (isKoreanLng(v2) && isKoreanLat(v1)) return { x: String(v2), y: String(v1) }
+      // x first (x=lng, y=lat)
+      if (isKoreanLng(v1) && isKoreanLat(v2)) return { x: String(v1), y: String(v2) }
     }
   }
   return null
@@ -162,7 +217,7 @@ export async function POST(req: NextRequest) {
     // 4. Apollo state 파싱 (이미지 + 좌표 동시 추출)
     const apolloData = parseApolloState(html)
     const cdnImages = extractCdnImages(html, apolloData, 3)
-    const coords = apolloData ? extractCoords(apolloData) : null
+    const coords = (apolloData ? extractCoords(apolloData) : null) || extractCoordsFromHtml(html)
 
     // CDN 이미지가 있으면 우선 사용, 없으면 og:image 폴백
     const allImageUrls: string[] = cdnImages.length > 0

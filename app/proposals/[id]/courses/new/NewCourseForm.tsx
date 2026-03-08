@@ -9,6 +9,8 @@ interface Place {
   description: string
   address: string
   url?: string
+  lat?: number
+  lng?: number
   imageAssetId?: string    // 하위 호환 유지
   imageAssetIds?: string[] // 여러 이미지
   imagePreview?: string
@@ -55,6 +57,8 @@ export default function NewCourseForm({ proposalId }: { proposalId: string }) {
         name: data.name || updated2[idx].name,
         description: data.description || updated2[idx].description,
         address: data.address || updated2[idx].address,
+        lat: data.lat ?? updated2[idx].lat,
+        lng: data.lng ?? updated2[idx].lng,
         imageAssetId: data.assetId || updated2[idx].imageAssetId,
         imagePreview: data.imageUrl || updated2[idx].imagePreview,
         imageAssetIds: (data.assetIds && data.assetIds.length > 0) ? data.assetIds : updated2[idx].imageAssetIds,

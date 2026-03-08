@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import ImageCarousel from '@/app/components/ImageCarousel'
+import CourseMap from '@/app/components/CourseMap'
 import { ko } from 'date-fns/locale'
 
 interface Place {
@@ -211,6 +212,21 @@ export default function NewProposalForm() {
             </div>
           )}
         </div>
+
+        {/* 코스 지도 */}
+        {validCourses.length > 0 && (
+          <CourseMap
+            courses={validCourses.map((c, i) => ({
+              _id: `preview-${i}`,
+              title: c.title,
+              places: c.places.filter(p => p.name.trim()).map(p => ({
+                name: p.name,
+                lat: p.lat,
+                lng: p.lng,
+              })),
+            }))}
+          />
+        )}
 
         {/* 코스 목록 */}
         {validCourses.length > 0 && (

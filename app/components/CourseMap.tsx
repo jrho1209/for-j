@@ -28,33 +28,27 @@ const COLORS = ['#b5614e', '#5c6fbf', '#4a8f6a', '#a07840', '#8b6fbf']
 declare global {
   interface Window {
     naver: any
-    __naverMapCallbacks?: Array<() => void>
   }
 }
 
-function loadNaverMapsScript(clientId: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (window.naver?.maps) { resolve(); return }
-    if (!window.__naverMapCallbacks) {
-      window.__naverMapCallbacks = []
-      const script = document.createElement('script')
-      script.src = `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${clientId}`
-      script.onload = () => {
-        window.__naverMapCallbacks!.forEach(cb => cb())
-        window.__naverMapCallbacks = []
-      }
-      document.head.appendChild(script)
-    }
-    window.__naverMapCallbacks.push(resolve)
-  })
+function useNaverMaps() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    if (window.naver?.maps) { setReady(true); return }
+    const interval = setInterval(() => {
+      if (window.naver?.maps) { setReady(true); clearInterval(interval) }
+    }, 200)
+    return () => clearInterval(interval)
+  }, [])
+  return ready
 }
 
 export default function CourseMap({ courses, selectedCourseId }: Props) {
-  const clientId = process.env.NEXT_PUBLIC_NAVER_MAPS_CLIENT_ID
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const polylinesRef = useRef<any[]>([])
+  const naverReady = useNaverMaps()
 
   const coursesWithCoords: Course[] = courses
     .map(c => ({
@@ -76,93 +70,85 @@ export default function CourseMap({ courses, selectedCourseId }: Props) {
   const color = COLORS[colorIndex % COLORS.length] || COLORS[0]
 
   useEffect(() => {
-    if (!activeCourse || !mapRef.current || !clientId) return
+    if (!naverReady || !activeCourse || !mapRef.current) return
 
+    const naver = window.naver
     const places = activeCourse.places
     if (places.length === 0) return
 
-    const initMap = () => {
-      const naver = window.naver
-      const center = new naver.maps.LatLng(places[0].lat, places[0].lng)
+    const center = new naver.maps.LatLng(places[0].lat, places[0].lng)
 
-      if (!mapInstanceRef.current) {
-        mapInstanceRef.current = new naver.maps.Map(mapRef.current, {
-          center,
-          zoom: 14,
-          zoomControl: true,
-          zoomControlOptions: { position: naver.maps.Position.TOP_RIGHT, style: naver.maps.ZoomControlStyle.SMALL },
-        })
-      }
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = new naver.maps.Map(mapRef.current, {
+        center,
+        zoom: 14,
+        zoomControl: true,
+        zoomControlOptions: { position: naver.maps.Position.TOP_RIGHT, style: naver.maps.ZoomControlStyle.SMALL },
+      })
+    }
 
-      // Clear old markers and polylines
-      markersRef.current.forEach(m => m.setMap(null))
-      polylinesRef.current.forEach(p => p.setMap(null))
-      markersRef.current = []
-      polylinesRef.current = []
+    // Clear old markers and polylines
+    markersRef.current.forEach(m => m.setMap(null))
+    polylinesRef.current.forEach(p => p.setMap(null))
+    markersRef.current = []
+    polylinesRef.current = []
 
-      const bounds = new naver.maps.LatLngBounds()
+    const bounds = new naver.maps.LatLngBounds()
 
-      places.forEach((place, i) => {
-        const pos = new naver.maps.LatLng(place.lat, place.lng)
-        bounds.extend(pos)
+    places.forEach((place, i) => {
+      const pos = new naver.maps.LatLng(place.lat, place.lng)
+      bounds.extend(pos)
 
-        const marker = new naver.maps.Marker({
-          position: pos,
-          map: mapInstanceRef.current,
-          icon: {
-            content: `<div style="
-              width:28px;height:28px;border-radius:50%;
-              background:${color};color:#fff;
-              font-size:12px;font-weight:700;
-              display:flex;align-items:center;justify-content:center;
-              box-shadow:0 2px 6px rgba(0,0,0,0.25);
-              border:2px solid #fff;
-              font-family:-apple-system,sans-serif;
-            ">${i + 1}</div>`,
-            anchor: new naver.maps.Point(14, 14),
-          },
-        })
-
-        const infoWindow = new naver.maps.InfoWindow({
-          content: `<div style="padding:6px 10px;font-size:12px;font-weight:600;color:#3d2c28;white-space:nowrap;font-family:-apple-system,sans-serif;">${place.name}</div>`,
-          borderColor: '#e8d8d0',
-          borderWidth: 1,
-          disableAnchor: false,
-          backgroundColor: '#fffdf9',
-        })
-
-        naver.maps.Event.addListener(marker, 'click', () => {
-          if (infoWindow.getMap()) infoWindow.close()
-          else infoWindow.open(mapInstanceRef.current, marker)
-        })
-
-        markersRef.current.push(marker)
+      const marker = new naver.maps.Marker({
+        position: pos,
+        map: mapInstanceRef.current,
+        icon: {
+          content: `<div style="
+            width:28px;height:28px;border-radius:50%;
+            background:${color};color:#fff;
+            font-size:12px;font-weight:700;
+            display:flex;align-items:center;justify-content:center;
+            box-shadow:0 2px 6px rgba(0,0,0,0.25);
+            border:2px solid #fff;
+            font-family:-apple-system,sans-serif;
+          ">${i + 1}</div>`,
+          anchor: new naver.maps.Point(14, 14),
+        },
       })
 
-      if (places.length > 1) {
-        const path = places.map(p => new naver.maps.LatLng(p.lat, p.lng))
-        const polyline = new naver.maps.Polyline({
-          path,
-          map: mapInstanceRef.current,
-          strokeColor: color,
-          strokeOpacity: 0.6,
-          strokeWeight: 2.5,
-          strokeStyle: 'shortdash',
-        })
-        polylinesRef.current.push(polyline)
-      }
+      const infoWindow = new naver.maps.InfoWindow({
+        content: `<div style="padding:6px 10px;font-size:12px;font-weight:600;color:#3d2c28;white-space:nowrap;font-family:-apple-system,sans-serif;">${place.name}</div>`,
+        borderColor: '#e8d8d0',
+        borderWidth: 1,
+        disableAnchor: false,
+        backgroundColor: '#fffdf9',
+      })
 
-      mapInstanceRef.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 })
+      naver.maps.Event.addListener(marker, 'click', () => {
+        if (infoWindow.getMap()) infoWindow.close()
+        else infoWindow.open(mapInstanceRef.current, marker)
+      })
+
+      markersRef.current.push(marker)
+    })
+
+    if (places.length > 1) {
+      const path = places.map(p => new naver.maps.LatLng(p.lat, p.lng))
+      const polyline = new naver.maps.Polyline({
+        path,
+        map: mapInstanceRef.current,
+        strokeColor: color,
+        strokeOpacity: 0.6,
+        strokeWeight: 2.5,
+        strokeStyle: 'shortdash',
+      })
+      polylinesRef.current.push(polyline)
     }
 
-    if (window.naver?.maps) {
-      initMap()
-    } else {
-      loadNaverMapsScript(clientId).then(initMap)
-    }
-  }, [activeCourseId, clientId])
+    mapInstanceRef.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 })
+  }, [activeCourseId, naverReady])
 
-  if (!clientId || coursesWithCoords.length === 0) return null
+  if (coursesWithCoords.length === 0) return null
 
   return (
     <div className="card overflow-hidden">
