@@ -31,6 +31,14 @@ export default function NewCourseForm({ proposalId }: { proposalId: string }) {
 
   const removePlace = (idx: number) => setPlaces(places.filter((_, i) => i !== idx))
 
+  const movePlace = (from: number, to: number) => {
+    if (from === to) return
+    const items = [...places]
+    const [moved] = items.splice(from, 1)
+    items.splice(to, 0, moved)
+    setPlaces(items)
+  }
+
   const updatePlace = (idx: number, field: keyof Omit<Place, 'imageAssetId' | 'imagePreview'>, value: string) => {
     const updated = [...places]
     updated[idx] = { ...updated[idx], [field]: value }
@@ -154,9 +162,21 @@ export default function NewCourseForm({ proposalId }: { proposalId: string }) {
         </div>
 
         {places.map((place, idx) => (
-          <div key={idx} className="card p-4 space-y-2">
+          <div key={idx} className="card p-4 space-y-2"
+            draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)) }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+            onDrop={(e) => { e.preventDefault(); movePlace(parseInt(e.dataTransfer.getData('text/plain')), idx) }}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium" style={{ color: '#9b7b72' }}>장소 {idx + 1}</span>
+              <div className="flex items-center gap-2">
+                <span
+                  className="cursor-grab active:cursor-grabbing select-none text-sm"
+                  style={{ color: '#c4a89f' }}
+                  title="드래그하여 순서 변경"
+                >⠿</span>
+                <span className="text-xs font-medium" style={{ color: '#9b7b72' }}>장소 {idx + 1}</span>
+              </div>
               {places.length > 1 && (
                 <button
                   type="button"

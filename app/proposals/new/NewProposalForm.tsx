@@ -78,6 +78,16 @@ export default function NewProposalForm() {
     setCourses(updated)
   }
 
+  const movePlace = (ci: number, from: number, to: number) => {
+    if (from === to) return
+    const updated = [...courses]
+    const items = [...updated[ci].places]
+    const [moved] = items.splice(from, 1)
+    items.splice(to, 0, moved)
+    updated[ci].places = items
+    setCourses(updated)
+  }
+
   const updatePlace = (ci: number, pi: number, field: keyof Place, value: string) => {
     const updated = [...courses]
     updated[ci].places[pi] = { ...updated[ci].places[pi], [field]: value }
@@ -406,9 +416,20 @@ export default function NewProposalForm() {
                   key={pi}
                   className="rounded-xl p-3 space-y-2"
                   style={{ background: '#faf7f4', border: '1px solid #f0e8e0' }}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(pi)) }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+                  onDrop={(e) => { e.preventDefault(); movePlace(ci, parseInt(e.dataTransfer.getData('text/plain')), pi) }}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs" style={{ color: '#c4a89f' }}>장소 {pi + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="cursor-grab active:cursor-grabbing select-none text-sm"
+                        style={{ color: '#c4a89f' }}
+                        title="드래그하여 순서 변경"
+                      >⠿</span>
+                      <span className="text-xs" style={{ color: '#c4a89f' }}>장소 {pi + 1}</span>
+                    </div>
                     {course.places.length > 1 && (
                       <button
                         type="button"
