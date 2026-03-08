@@ -24,7 +24,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const body = await req.json()
   const { title, description, places, order } = body
-
   const course = await client.create({
     _type: 'dateCourse',
     proposal: { _type: 'reference', _ref: id },

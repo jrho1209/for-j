@@ -1,16 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
+import ImageCarousel from '@/app/components/ImageCarousel'
 import { ko } from 'date-fns/locale'
 
 interface Place {
   name: string
   description: string
   address: string
-  imageAssetId?: string
+  url?: string
+  imageAssetId?: string    // 하위 호환 유지
+  imageAssetIds?: string[] // 여러 이미지
   imagePreview?: string
+  imagePreviews?: string[] // 여러 미리보기
 }
 
 interface Course {
@@ -37,7 +41,7 @@ const TIME_OPTIONS = (() => {
   return options
 })()
 
-const emptyPlace = (): Place => ({ name: '', description: '', address: '', imageAssetId: undefined, imagePreview: undefined })
+const emptyPlace = (): Place => ({ name: '', description: '', address: '', imageAssetId: undefined, imageAssetIds: undefined, imagePreview: undefined, imagePreviews: undefined })
 const emptyCourse = (): Course => ({ title: '', description: '', places: [emptyPlace()] })
 
 export default function NewProposalForm() {
@@ -46,6 +50,8 @@ export default function NewProposalForm() {
   const [showPreview, setShowPreview] = useState(false)
   const [form, setForm] = useState({ title: '', proposedDate: '', proposedTime: '', message: '' })
   const [courses, setCourses] = useState<Course[]>([emptyCourse()])
+  const coursesRef = useRef(courses)
+  coursesRef.current = courses
 
   const addCourse = () => setCourses([...courses, emptyCourse()])
 
@@ -77,8 +83,8 @@ export default function NewProposalForm() {
 
   const fetchPlaceFromUrl = async (ci: number, pi: number, url: string) => {
     if (!url.includes('naver') && !url.includes('kakao') && !url.startsWith('http')) return
-    const updated = [...courses]
-    updated[ci].places[pi] = { ...updated[ci].places[pi], imagePreview: 'loading' }
+    const updated = coursesRef.current.map(c => ({ ...c, places: [...c.places] }))
+    updated[ci].places[pi] = { ...updated[ci].places[pi], url, imagePreview: 'loading' }
     setCourses(updated)
 
     const res = await fetch('/api/place-preview', {
@@ -88,26 +94,29 @@ export default function NewProposalForm() {
     })
     if (res.ok) {
       const data = await res.json()
-      const updated2 = [...courses]
+      const updated2 = coursesRef.current.map(c => ({ ...c, places: [...c.places] }))
       updated2[ci].places[pi] = {
         ...updated2[ci].places[pi],
+        url,
         name: data.name || updated2[ci].places[pi].name,
         description: data.description || updated2[ci].places[pi].description,
         address: data.address || updated2[ci].places[pi].address,
         imageAssetId: data.assetId || updated2[ci].places[pi].imageAssetId,
         imagePreview: data.imageUrl || updated2[ci].places[pi].imagePreview,
+        imageAssetIds: (data.assetIds && data.assetIds.length > 0) ? data.assetIds : updated2[ci].places[pi].imageAssetIds,
+        imagePreviews: (data.imageUrls && data.imageUrls.length > 0) ? data.imageUrls : updated2[ci].places[pi].imagePreviews,
       }
       setCourses(updated2)
     } else {
-      const updated2 = [...courses]
-      updated2[ci].places[pi] = { ...updated2[ci].places[pi], imagePreview: undefined }
+      const updated2 = coursesRef.current.map(c => ({ ...c, places: [...c.places] }))
+      updated2[ci].places[pi] = { ...updated2[ci].places[pi], url, imagePreview: undefined }
       setCourses(updated2)
     }
   }
 
   const uploadPlaceImage = async (ci: number, pi: number, file: File) => {
     const preview = URL.createObjectURL(file)
-    const updated = [...courses]
+    const updated = coursesRef.current.map(c => ({ ...c, places: [...c.places] }))
     updated[ci].places[pi] = { ...updated[ci].places[pi], imagePreview: preview }
     setCourses(updated)
 
@@ -116,7 +125,7 @@ export default function NewProposalForm() {
     const res = await fetch('/api/upload', { method: 'POST', body: formData })
     if (res.ok) {
       const data = await res.json()
-      const updated2 = [...courses]
+      const updated2 = coursesRef.current.map(c => ({ ...c, places: [...c.places] }))
       updated2[ci].places[pi] = { ...updated2[ci].places[pi], imageAssetId: data.assetId, imagePreview: preview }
       setCourses(updated2)
     }
@@ -136,7 +145,7 @@ export default function NewProposalForm() {
       const proposal = await proposalRes.json()
 
       // 2. 코스들 생성 (병렬)
-      const validCourses = courses.filter((c) => c.title.trim())
+      const validCourses = coursesRef.current.filter((c) => c.title.trim())
       await Promise.all(
         validCourses.map((course, i) =>
           fetch(`/api/proposals/${proposal._id}/courses`, {
@@ -146,9 +155,12 @@ export default function NewProposalForm() {
               ...course,
               places: course.places
                 .filter((p) => p.name.trim())
-                .map(({ imagePreview, imageAssetId, ...p }) => ({
+                .map(({ imagePreview, imagePreviews, imageAssetId, imageAssetIds, ...p }) => ({
                   ...p,
                   ...(imageAssetId ? { image: { _type: 'image', asset: { _type: 'reference', _ref: imageAssetId } } } : {}),
+                  ...(imageAssetIds && imageAssetIds.length > 0
+                    ? { images: imageAssetIds.map(id => ({ _type: 'image', asset: { _type: 'reference', _ref: id } })) }
+                    : {}),
                 })),
               order: i,
             }),
@@ -213,9 +225,14 @@ export default function NewProposalForm() {
                   <div className="ml-10 space-y-3">
                     {course.places.filter((p) => p.name.trim()).map((place, i) => (
                       <div key={i}>
-                        {place.imagePreview && place.imagePreview !== 'loading' && (
-                          <div className="rounded-xl mb-1.5 h-36" style={{ backgroundImage: `url(${place.imagePreview})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
-                        )}
+                        {(() => {
+                          const previews = place.imagePreviews && place.imagePreviews.length > 0
+                            ? place.imagePreviews.slice(0, 3)
+                            : place.imagePreview && place.imagePreview !== 'loading'
+                              ? [place.imagePreview]
+                              : []
+                          return <ImageCarousel images={previews} href={place.url} />
+                        })()}
                         <div className="flex items-start gap-2">
                           <span className="text-sm shrink-0" style={{ color: '#c98d82' }}>·</span>
                           <div>
@@ -386,6 +403,8 @@ export default function NewProposalForm() {
                   <input
                     className="input-romantic text-xs"
                     placeholder="네이버 플레이스 URL 붙여넣기 (자동완성)"
+                    value={place.url || ''}
+                    onChange={(e) => updatePlace(ci, pi, 'url', e.target.value)}
                     onBlur={(e) => e.target.value && fetchPlaceFromUrl(ci, pi, e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), fetchPlaceFromUrl(ci, pi, (e.target as HTMLInputElement).value))}
                     style={{ borderColor: '#d4b8b0' }}
@@ -408,35 +427,34 @@ export default function NewProposalForm() {
                     value={place.description}
                     onChange={(e) => updatePlace(ci, pi, 'description', e.target.value)}
                   />
-                  <label
-                    className="block rounded-xl overflow-hidden cursor-pointer"
-                    style={{ border: '1px dashed #e8d8d0' }}
-                  >
-                    {place.imagePreview === 'loading' ? (
-                      <div className="h-28 flex items-center justify-center" style={{ background: '#f9f4f0' }}>
-                        <span className="text-xs" style={{ color: '#c4a89f' }}>이미지 불러오는 중...</span>
-                      </div>
-                    ) : place.imagePreview ? (
-                      <div
-                        className="h-28"
-                        style={{
-                          backgroundImage: `url(${place.imagePreview})`,
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center',
-                        }}
-                      />
-                    ) : (
+                  {place.imagePreview === 'loading' ? (
+                    <div className="rounded-xl h-28 flex items-center justify-center" style={{ background: '#f9f4f0', border: '1px dashed #e8d8d0' }}>
+                      <span className="text-xs" style={{ color: '#c4a89f' }}>이미지 불러오는 중...</span>
+                    </div>
+                  ) : (place.imagePreviews && place.imagePreviews.length > 0) || place.imagePreview ? (
+                    <ImageCarousel
+                      images={
+                        place.imagePreviews && place.imagePreviews.length > 0
+                          ? place.imagePreviews.slice(0, 3)
+                          : [place.imagePreview!]
+                      }
+                    />
+                  ) : (
+                    <label
+                      className="block rounded-xl overflow-hidden cursor-pointer"
+                      style={{ border: '1px dashed #e8d8d0' }}
+                    >
                       <div className="py-3 text-center">
                         <span className="text-xs" style={{ color: '#c4a89f' }}>사진 추가 (선택)</span>
                       </div>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => e.target.files?.[0] && uploadPlaceImage(ci, pi, e.target.files[0])}
-                    />
-                  </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => e.target.files?.[0] && uploadPlaceImage(ci, pi, e.target.files[0])}
+                      />
+                    </label>
+                  )}
                 </div>
               ))}
               <button

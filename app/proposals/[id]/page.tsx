@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import ProposalActions from './ProposalActions'
 import Link from 'next/link'
+import ImageCarousel from '@/app/components/ImageCarousel'
 
 export default async function ProposalDetailPage({
   params,
@@ -27,7 +28,7 @@ export default async function ProposalDetailPage({
     readClient.fetch(
       `*[_type == "dateCourse" && proposal._ref == $id] | order(order asc) {
         _id, title, description, order,
-        places[]{ name, description, address, emoji, image{ asset->{ url } } }
+        places[]{ name, description, address, url, emoji, image{ asset->{ url } }, images[]{ asset->{ url } } }
       }`,
       { id }
     ),
@@ -125,16 +126,15 @@ export default async function ProposalDetailPage({
                   <div className="ml-10 space-y-3">
                     {course.places.map((place: any, i: number) => (
                       <div key={place._key || i}>
-                        {place.image?.asset?.url && (
-                          <div
-                            className="rounded-xl mb-1.5 h-36"
-                            style={{
-                              backgroundImage: `url(${place.image.asset.url})`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center',
-                            }}
-                          />
-                        )}
+                        {(() => {
+                          const imageSrcs: string[] =
+                            place.images && place.images.length > 0
+                              ? place.images.slice(0, 3).map((img: any) => img?.asset?.url).filter(Boolean)
+                              : place.image?.asset?.url
+                                ? [place.image.asset.url]
+                                : []
+                          return <ImageCarousel images={imageSrcs} href={place.url} />
+                        })()}
                         <div className="flex items-start gap-2">
                           <span className="text-sm shrink-0" style={{ color: '#c98d82' }}>·</span>
                           <div>

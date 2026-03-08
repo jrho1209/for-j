@@ -11,6 +11,85 @@ function parseMeta(html: string, property: string): string {
   return value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
 }
 
+function extractCdnImages(html: string, limit = 3): string[] {
+  const urls: string[] = []
+  const seen = new Set<string>()
+
+  const addUrl = (url: string) => {
+    if (urls.length >= limit) return
+    if (!/\/20\d{6}/.test(url)) return
+    const clean = url.split('?')[0]
+    if (!seen.has(clean)) {
+      seen.add(clean)
+      urls.push(clean)
+    }
+  }
+
+  // __APOLLO_STATE__ JSON 파싱 (JSON.parse가 \u002F → / 자동 변환)
+  const apolloStart = html.indexOf('window.__APOLLO_STATE__')
+  if (apolloStart >= 0) {
+    const braceStart = html.indexOf('{', apolloStart)
+    let depth = 0, braceEnd = braceStart
+    for (let i = braceStart; i < html.length; i++) {
+      if (html[i] === '{') depth++
+      else if (html[i] === '}') {
+        depth--
+        if (depth === 0) { braceEnd = i + 1; break }
+      }
+    }
+    try {
+      const data = JSON.parse(html.slice(braceStart, braceEnd))
+      const collect = (obj: unknown) => {
+        if (urls.length >= limit) return
+        if (typeof obj === 'string') {
+          if (obj.includes('ldb-phinf.pstatic.net') && /\/20\d{6}/.test(obj)) addUrl(obj)
+        } else if (Array.isArray(obj)) {
+          for (const item of obj) collect(item)
+        } else if (obj && typeof obj === 'object') {
+          for (const val of Object.values(obj as Record<string, unknown>)) collect(val)
+        }
+      }
+      collect(data)
+    } catch { /* JSON 파싱 실패 시 무시 */ }
+  }
+
+  // 폴백: HTML 내 URL 인코딩된 이미지 (search.pstatic.net 래퍼 src= 파라미터)
+  if (urls.length < limit) {
+    const encodedRe = /src=https?(?:%3A|:)(?:%2F|\/){2}(ldb-phinf\.pstatic\.net(?:%2F|\/)[^"&\s<>]*)/gi
+    let m: RegExpExecArray | null
+    while ((m = encodedRe.exec(html)) !== null) {
+      try {
+        const decoded = decodeURIComponent(m[1])
+        if (/\/20\d{6}/.test(decoded)) addUrl('https://' + decoded)
+      } catch { /* 무시 */ }
+      if (urls.length >= limit) break
+    }
+  }
+
+  return urls
+}
+
+async function uploadImageToSanity(imageUrl: string, index: number): Promise<{ assetId: string; url: string } | null> {
+  try {
+    const imgRes = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        Referer: 'https://map.naver.com/',
+      },
+    })
+    if (!imgRes.ok) return null
+    const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+    const buffer = Buffer.from(await imgRes.arrayBuffer())
+    const asset = await client.assets.upload('image', buffer, {
+      filename: `naver-place-${Date.now()}-${index}.jpg`,
+      contentType,
+    })
+    return { assetId: asset._id, url: asset.url }
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
@@ -47,6 +126,7 @@ export async function POST(req: NextRequest) {
     if (placeId) {
       const placeRes = await fetch(`https://m.place.naver.com/place/${placeId}/home`, {
         headers: { ...COMMON_HEADERS, 'User-Agent': MOBILE_UA },
+        redirect: 'follow',
       })
       html = placeRes.ok ? await placeRes.text() : await res.text()
     } else {
@@ -55,7 +135,7 @@ export async function POST(req: NextRequest) {
 
     const rawTitle = parseMeta(html, 'og:title')
     const description = parseMeta(html, 'og:description')
-    const imageUrl = parseMeta(html, 'og:image')
+    const ogImageUrl = parseMeta(html, 'og:image')
 
     // " : 네이버" 등 접미사 제거
     const title = rawTitle.replace(/\s*:\s*네이버.*$/, '').trim()
@@ -67,39 +147,36 @@ export async function POST(req: NextRequest) {
     const address = (!isReviewDesc && parts.length > 1) ? parts.slice(1).join(' ').trim() : ''
     const category = (!isReviewDesc && parts.length > 1) ? parts[0].trim() : ''
 
-    // OG 이미지를 Sanity에 업로드
-    let assetId: string | undefined
-    let sanityImageUrl: string | undefined
+    // 4. CDN 이미지 최대 3개 추출 (HTML에서 직접 ldb-phinf URL 파싱)
+    const cdnImages = extractCdnImages(html, 3)
 
-    if (imageUrl) {
-      try {
-        const imgRes = await fetch(imageUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0',
-            Referer: 'https://map.naver.com/',
-          },
-        })
-        if (imgRes.ok) {
-          const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
-          const buffer = Buffer.from(await imgRes.arrayBuffer())
-          const asset = await client.assets.upload('image', buffer, {
-            filename: `naver-place-${Date.now()}.jpg`,
-            contentType,
-          })
-          assetId = asset._id
-          sanityImageUrl = asset.url
-        }
-      } catch {
-        // 이미지 업로드 실패는 무시하고 텍스트 정보만 반환
-      }
-    }
+    // CDN 이미지가 있으면 우선 사용, 없으면 og:image 폴백
+    const allImageUrls: string[] = cdnImages.length > 0
+      ? cdnImages.slice(0, 3)
+      : ogImageUrl ? [ogImageUrl] : []
+
+    // 5. 이미지들을 병렬로 Sanity에 업로드 (최대 3개)
+    const uploadTargets = allImageUrls.slice(0, 3)
+    const uploadResults = await Promise.all(
+      uploadTargets.map((imgUrl, i) => uploadImageToSanity(imgUrl, i))
+    )
+
+    const uploaded = uploadResults.filter((r): r is { assetId: string; url: string } => r !== null)
+    const assetIds = uploaded.map(r => r.assetId)
+    const imageUrls = uploaded.map(r => r.url)
+
+    // 하위 호환: 기존 단수 필드도 함께 반환
+    const assetId = assetIds[0]
+    const imageUrl = imageUrls[0] || ogImageUrl
 
     return NextResponse.json({
       name: title,
       description: category,
       address,
-      imageUrl: sanityImageUrl || imageUrl,
+      imageUrl,
       assetId,
+      imageUrls,
+      assetIds,
     })
   } catch {
     return NextResponse.json({ error: '정보를 가져오지 못했어요.' }, { status: 500 })
